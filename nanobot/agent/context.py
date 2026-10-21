@@ -8,7 +8,7 @@ from typing import Any
 from nanobot.agent.memory import MemoryStore
 from nanobot.agent.skills import SkillsLoader
 
-
+# prompt是怎么被拼出来的: build_system_prompt, build_messages
 class ContextBuilder:
     """
     Builds the context (system prompt + messages) for the agent.
@@ -23,7 +23,8 @@ class ContextBuilder:
         self.workspace = workspace
         self.memory = MemoryStore(workspace)
         self.skills = SkillsLoader(workspace)
-    
+
+    # 第一条system消息的内容
     def build_system_prompt(self, skill_names: list[str] | None = None) -> str:
         """
         Build the system prompt from bootstrap files, memory, and skills.
@@ -36,15 +37,19 @@ class ContextBuilder:
         """
         parts = []
         
-        # Core identity
+        # Core identity 获取身份! 这段代码是写死的
         parts.append(self._get_identity())
         
         # Bootstrap files
+        # Bootstrap 文件（_load_bootstrap_files）：依次读取 workspace 下的 AGENTS.md、
+        # SOUL.md、USER.md、TOOLS.md、IDENTITY.md。文件存在就读进来，不存在就跳过。
+        # 用户可以通过编辑这几个文件定制 bot 的性格和背景知识。
         bootstrap = self._load_bootstrap_files()
         if bootstrap:
             parts.append(bootstrap)
         
         # Memory context
+        # 获取长期记忆加上今天的笔记
         memory = self.memory.get_memory_context()
         if memory:
             parts.append(f"# Memory\n\n{memory}")
@@ -73,6 +78,7 @@ Skills with available="false" need dependencies installed first - you can try in
         """Get the core identity section."""
         from datetime import datetime
         now = datetime.now().strftime("%Y-%m-%d %H:%M (%A)")
+        # expanduser()展开家目录~ resolve() 解析为绝对路径
         workspace_path = str(self.workspace.expanduser().resolve())
         
         return f"""# nanobot 🐈
@@ -111,7 +117,10 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
                 parts.append(f"## {filename}\n\n{content}")
         
         return "\n\n".join(parts) if parts else ""
-    
+
+    # 拼出初始列表: system + history + 本轮user消息(按顺序)
+    # 其中history来自session, session只保存最终的user/assistant文本, 
+    # 所以history里永远不会出现tool消息。上一轮读过什么文件, 执行过什么命令, 下一轮的模型看不见
     def build_messages(
         self,
         history: list[dict[str, Any]],
@@ -146,6 +155,8 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
 
         return messages
 
+    # user消息的内容, 有图片时会变成图文混合格式
+    # 没有图片时, content就是普通字符串。有图片时, 比如说Telegram发来的照片, content变成了一个列表
     def _build_user_content(self, text: str, media: list[str] | None) -> str | list[dict[str, Any]]:
         """Build user message content with optional base64-encoded images."""
         if not media:
@@ -163,7 +174,8 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
         if not images:
             return text
         return images + [{"type": "text", "text": text}]
-    
+
+    # 追加一条tool消息, 内容是工具执行结果
     def add_tool_result(
         self,
         messages: list[dict[str, Any]],
@@ -190,7 +202,8 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
             "content": result
         })
         return messages
-    
+
+    # 追加一条带tool_calls的assistant消息
     def add_assistant_message(
         self,
         messages: list[dict[str, Any]],

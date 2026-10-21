@@ -81,6 +81,8 @@ class LiteLLMProvider(LLMProvider):
         Returns:
             LLMResponse with content and/or tool calls.
         """
+
+        #第一步: 确定模型名
         model = model or self.default_model
         
         # For OpenRouter, prefix model name if not already prefixed
@@ -104,7 +106,8 @@ class LiteLLMProvider(LLMProvider):
         # For Gemini, ensure gemini/ prefix if not already present
         if "gemini" in model.lower() and not model.startswith("gemini/"):
             model = f"gemini/{model}"
-        
+
+        #第二步: 拼请求参数
         kwargs: dict[str, Any] = {
             "model": model,
             "messages": messages,
@@ -113,15 +116,22 @@ class LiteLLMProvider(LLMProvider):
         }
         
         # Pass api_base directly for custom endpoints (vLLM, etc.)
-        if self.api_base:
+        if self.api_base: # 自定义地址(比如本地vLLM) 才加
             kwargs["api_base"] = self.api_base
+
+        # Pass api_key directly: LiteLLM's hosted_vllm reads HOSTED_VLLM_API_KEY,
+        # not OPENAI_API_KEY, so the env var set in __init__ isn't picked up
+        if self.is_vllm and self.api_key:
+            kwargs["api_key"] = self.api_key
         
         if tools:
             kwargs["tools"] = tools
             kwargs["tool_choice"] = "auto"
-        
+
+        # 第三步: 发送请求
         try:
             response = await acompletion(**kwargs)
+            # 第四步, 吧结果转成LLMResponse
             return self._parse_response(response)
         except Exception as e:
             # Return error as content for graceful handling
@@ -132,6 +142,31 @@ class LiteLLMProvider(LLMProvider):
     
     def _parse_response(self, response: Any) -> LLMResponse:
         """Parse LiteLLM response into our standard format."""
+        """
+        返回的是OPENAI的格式: 大概是这样子的
+            {
+            choices是多个, 是因为openai支持一次请求返回多个候选答案
+            "choices": [
+                {
+                "message": {
+                    "content": null,
+                    "tool_calls": [
+                    {
+                        "id": "call_abc",
+                        "function": {
+                        "name": "read_file",
+                        "arguments": "{\"path\": \"/tmp/a.txt\"}"
+                        }
+                    }
+                    ]
+                },
+                "finish_reason": "tool_calls"
+                }
+            ],
+            "usage": { "prompt_tokens": 1200, "completion_tokens": 30, "total_tokens": 1230 }
+            }
+
+        """
         choice = response.choices[0]
         message = choice.message
         
@@ -154,6 +189,7 @@ class LiteLLMProvider(LLMProvider):
                 ))
         
         usage = {}
+        # 提取token用量
         if hasattr(response, "usage") and response.usage:
             usage = {
                 "prompt_tokens": response.usage.prompt_tokens,

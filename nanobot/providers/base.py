@@ -17,8 +17,10 @@ class ToolCallRequest:
 class LLMResponse:
     """Response from an LLM provider."""
     content: str | None
+    # private List<ToolCallRequest> toolCalls = new ArrayList<>()
     tool_calls: list[ToolCallRequest] = field(default_factory=list)
     finish_reason: str = "stop"
+    # private Map<String, Integer> usage = new HashMap<>();
     usage: dict[str, int] = field(default_factory=dict)
     
     @property
@@ -26,7 +28,7 @@ class LLMResponse:
         """Check if response contains tool calls."""
         return len(self.tool_calls) > 0
 
-
+# 对应java的抽象类呗 ABC 是 Abstract Base Class 的缩写，继承它就表示"这是抽象类"。
 class LLMProvider(ABC):
     """
     Abstract base class for LLM providers.
@@ -38,7 +40,8 @@ class LLMProvider(ABC):
     def __init__(self, api_key: str | None = None, api_base: str | None = None):
         self.api_key = api_key
         self.api_base = api_base
-    
+
+    # @abstractmethod ≈ Java 的 abstract 方法。子类如果没有实现这些方法，new 的时候就会报错
     @abstractmethod
     async def chat(
         self,
