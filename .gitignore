@@ -12,4 +12,4 @@ docs/
 *.pyw
 *.pyz
 *.pywz
-*.pyzz
+*.pyzz.DS_Store
