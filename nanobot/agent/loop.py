@@ -51,10 +51,14 @@ class AgentLoop:
         self.max_iterations = max_iterations
         self.brave_api_key = brave_api_key
         self.exec_config = exec_config or ExecToolConfig()
-        
+
+        # 构造上下文
         self.context = ContextBuilder(workspace)
+        # 构造session
         self.sessions = SessionManager(workspace)
+        # 工具注册
         self.tools = ToolRegistry()
+        # 子agent构造
         self.subagents = SubagentManager(
             provider=provider,
             workspace=workspace,
@@ -66,7 +70,8 @@ class AgentLoop:
         
         self._running = False
         self._register_default_tools()
-    
+
+    # 注册工具 虽然这些工具本来就是被我们给写死的
     def _register_default_tools(self) -> None:
         """Register the default set of tools."""
         # File tools
@@ -93,7 +98,8 @@ class AgentLoop:
         # Spawn tool (for subagents)
         spawn_tool = SpawnTool(manager=self.subagents)
         self.tools.register(spawn_tool)
-    
+
+    # 死循环, 不停从消息总线取消息来处理
     async def run(self) -> None:
         """Run the agent loop, processing messages from the bus."""
         self._running = True
@@ -103,7 +109,9 @@ class AgentLoop:
             try:
                 # Wait for next message
                 msg = await asyncio.wait_for(
+                    # 从队列里取一条消息。队列是空的就一直等, till Telegram/WhatsAPP这些渠道放进来一条消息为止
                     self.bus.consume_inbound(),
+                    # 1s内来了消息, 正常返回这条消息, 1s内没来, 跑出asyncio.TimeoutError
                     timeout=1.0
                 )
                 
@@ -127,7 +135,9 @@ class AgentLoop:
         """Stop the agent loop."""
         self._running = False
         logger.info("Agent loop stopping")
-    
+
+    # *********IMPORTANT*********
+    # 核心, 处理一条用户消息
     async def _process_message(self, msg: InboundMessage) -> OutboundMessage | None:
         """
         Process a single inbound message.
@@ -140,24 +150,31 @@ class AgentLoop:
         """
         # Handle system messages (subagent announces)
         # The chat_id contains the original "channel:chat_id" to route back to
+        # 如果说发消息的inbounds是来自 system, 那么就说名这个消息是sub agent的
         if msg.channel == "system":
             return await self._process_system_message(msg)
         
         logger.info(f"Processing message from {msg.channel}:{msg.sender_id}")
         
         # Get or create session
+        # 找到这段话的记忆 e.g. "telegram:12345" 这样的字符串, 由channel和chat_id拼成
         session = self.sessions.get_or_create(msg.session_key)
         
         # Update tool contexts
+        # 告诉两个工具“现在在哪个聊天里”
+        # 模型调用message工具时只会传入content, 不知道要发去那里, 所以每次处理消息之前, 
+        # 先把“当前是telegram:12345”存进工具对象里
         message_tool = self.tools.get("message")
         if isinstance(message_tool, MessageTool):
             message_tool.set_context(msg.channel, msg.chat_id)
-        
+
+        # 子agent做完之后要知道结果往哪里汇总
         spawn_tool = self.tools.get("spawn")
         if isinstance(spawn_tool, SpawnTool):
             spawn_tool.set_context(msg.channel, msg.chat_id)
         
         # Build initial messages (use get_history for LLM-formatted messages)
+        # 最后的消息变成了 [system, history(past 50 messages), ... , current user]
         messages = self.context.build_messages(
             history=session.get_history(),
             current_message=msg.content,
@@ -222,7 +239,8 @@ class AgentLoop:
             chat_id=msg.chat_id,
             content=final_content
         )
-    
+
+    # 处理子agent完成后发回来的通知, 和上面几乎一样
     async def _process_system_message(self, msg: InboundMessage) -> OutboundMessage | None:
         """
         Process a system message (e.g., subagent announce).
@@ -314,7 +332,8 @@ class AgentLoop:
             chat_id=origin_chat_id,
             content=final_content
         )
-    
+
+    # CLI, cron用的入口, 跳过总线直接调 _process_message
     async def process_direct(self, content: str, session_key: str = "cli:direct") -> str:
         """
         Process a message directly (for CLI usage).

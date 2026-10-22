@@ -1,5 +1,6 @@
 """CLI commands for nanobot."""
-
+# 把@app.command()看成是“把这个函数暴露到终端当命令”的贴纸
+# 定义这个命令行程序的所有子命令  
 import asyncio
 from pathlib import Path
 
@@ -9,9 +10,11 @@ from rich.table import Table
 
 from nanobot import __version__, __logo__
 
+# 这就是创建一个对象呗
 app = typer.Typer(
     name="nanobot",
     help=f"{__logo__} nanobot - Personal AI Assistant",
+    # 不带任何子命令时，自动显示帮助。
     no_args_is_help=True,
 )
 
@@ -38,7 +41,9 @@ def main(
 # Onboard / Setup
 # ============================================================================
 
-
+# 如果没有@app.command():他就是一个普通的python函数, 必须在代码里写onboard()才能运行
+# 然而加上@app.command()之后, Typer自动把它注册成了命令行命令。
+# 我在Terminal中直接敲nanobot onboard就会自动执行def onboard()这个函数
 @app.command()
 def onboard():
     """Initialize nanobot configuration and workspace."""
@@ -151,7 +156,8 @@ This file stores important information that should persist across sessions.
 # Gateway / Server
 # ============================================================================
 
-
+# 用户在终端输入:nanobot gateway -p 8080
+# Typer会自动把8080 赋值给函数的参数port=8080, 然后运行gateway()
 @app.command()
 def gateway(
     port: int = typer.Option(18790, "--port", "-p", help="Gateway port"),
