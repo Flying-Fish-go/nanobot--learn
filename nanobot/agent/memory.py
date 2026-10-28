@@ -1,5 +1,10 @@
 """Memory system for persistent agent memory."""
+"""
+When remembering something, write to {workspace_path}/memory/MEMORY.md
 
+AI的长期记忆, 是AI自己记下里的笔记, 比如用户叫豆丁, 用户喜好简短回答
+markdown文件, 放在~/.nanobot/workspace/memory/下
+"""
 from pathlib import Path
 from datetime import datetime
 

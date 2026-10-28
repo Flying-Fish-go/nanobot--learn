@@ -1,5 +1,5 @@
 """Session management for conversation history."""
-
+"""负责对话历史的保存和读取。每个聊天窗口对应一个Session。被记录到~/.nanobot/session/*.jsonl"""
 import json
 from pathlib import Path
 from dataclasses import dataclass, field
@@ -10,7 +10,7 @@ from loguru import logger
 
 from nanobot.utils.helpers import ensure_dir, safe_filename
 
-
+# 一段对话
 @dataclass
 class Session:
     """
@@ -35,7 +35,8 @@ class Session:
         }
         self.messages.append(msg)
         self.updated_at = datetime.now()
-    
+
+    # 取最近 50 条，只保留 role 和 content，作为历史记录发给 LLM
     def get_history(self, max_messages: int = 50) -> list[dict[str, Any]]:
         """
         Get message history for LLM context.
@@ -57,7 +58,7 @@ class Session:
         self.messages = []
         self.updated_at = datetime.now()
 
-
+# 管理所有会话 可以把它理解成 Java 里的一个 Repository/DAO，外加一层内存缓存 _cache：
 class SessionManager:
     """
     Manages conversation sessions.
@@ -74,7 +75,8 @@ class SessionManager:
         """Get the file path for a session."""
         safe_key = safe_filename(key.replace(":", "_"))
         return self.sessions_dir / f"{safe_key}.jsonl"
-    
+
+    # 先查缓存，缓存里没有就从磁盘读，磁盘上也没有就新建一个
     def get_or_create(self, key: str) -> Session:
         """
         Get an existing session or create a new one.
@@ -132,7 +134,8 @@ class SessionManager:
         except Exception as e:
             logger.warning(f"Failed to load session {key}: {e}")
             return None
-    
+
+    # 把整个会话重写到 .jsonl 文件里。第一行是元数据，后面每行一条消息
     def save(self, session: Session) -> None:
         """Save a session to disk."""
         path = self._get_session_path(session.key)
@@ -152,7 +155,8 @@ class SessionManager:
                 f.write(json.dumps(msg) + "\n")
         
         self._cache[session.key] = session
-    
+
+    # 删除会话
     def delete(self, key: str) -> bool:
         """
         Delete a session.
@@ -172,7 +176,8 @@ class SessionManager:
             path.unlink()
             return True
         return False
-    
+
+    # 列出所有会话
     def list_sessions(self) -> list[dict[str, Any]]:
         """
         List all sessions.

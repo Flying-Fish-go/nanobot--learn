@@ -28,7 +28,9 @@ class BaseChannel(ABC):
         self.config = config
         self.bus = bus
         self._running = False
-    
+
+    # 连接聊天平台, 然后一直监听新消息. 是一个长期运行的任务, 正常情况下不会返回. 收到消息后,
+    # 子类要调用_handle_message()把消息交给nanobot, 由CHannrlManager.start_all()咋gateway启动时调用. 
     @abstractmethod
     async def start(self) -> None:
         """
@@ -40,12 +42,14 @@ class BaseChannel(ABC):
         3. Forwards messages to the bus via _handle_message()
         """
         pass
-    
+
+    # 断开连接, 释放资源, 并把_running设回false
     @abstractmethod
     async def stop(self) -> None:
         """Stop the channel and clean up resources."""
         pass
-    
+
+    # 把AgentLoop生成的回复(OutboundMessage)转换成平台需要的格式发出去
     @abstractmethod
     async def send(self, msg: OutboundMessage) -> None:
         """

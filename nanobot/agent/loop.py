@@ -69,6 +69,7 @@ class AgentLoop:
         )
         
         self._running = False
+        # 在构造器中调用_register_default_tools()方法
         self._register_default_tools()
 
     # 注册工具 虽然这些工具本来就是被我们给写死的

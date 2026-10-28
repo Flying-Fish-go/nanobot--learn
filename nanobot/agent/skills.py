@@ -1,5 +1,5 @@
 """Skills loader for agent capabilities."""
-
+"""不是工具, 读取一些Markdown文件, 再把内容拼进system prompt"""
 import json
 import os
 import re
@@ -9,7 +9,7 @@ from pathlib import Path
 # Default builtin skills directory (relative to this file)
 BUILTIN_SKILLS_DIR = Path(__file__).parent.parent / "skills"
 
-
+# 一个skill就是一份写给AI看的说明书, 一个目录里放一个SKILL.md
 class SkillsLoader:
     """
     Loader for agent skills.
@@ -22,7 +22,13 @@ class SkillsLoader:
         self.workspace = workspace
         self.workspace_skills = workspace / "skills"
         self.builtin_skills = builtin_skills_dir or BUILTIN_SKILLS_DIR
-    
+
+    # 找 skill：两个来源，workspace 优先
+    # ~/.nanobot/workspace/skills/xxx/SKILL.md：用户自己写的
+    # 比如说  /Users/douding/.nanobot/workspace/skills/weather/SKILL.md
+    # nanobot/skills/xxx/SKILL.md：项目内置的
+    # 比如说 /Users/douding/Desktop/nanobot-early/nanobot/skills/weather/SKILL.md
+    # 如果两边有同名 skill，用 workspace 里的。这样用户可以覆盖内置的 skill。
     def list_skills(self, filter_unavailable: bool = True) -> list[dict[str, str]]:
         """
         List all available skills.
@@ -55,7 +61,8 @@ class SkillsLoader:
         if filter_unavailable:
             return [s for s in skills if self._check_requirements(self._get_skill_meta(s["name"]))]
         return skills
-    
+
+    # 按名字读出SKILL.md的全文
     def load_skill(self, name: str) -> str | None:
         """
         Load a skill by name.
@@ -78,7 +85,8 @@ class SkillsLoader:
                 return builtin_skill.read_text(encoding="utf-8")
         
         return None
-    
+
+    # 把指定的skill的正文全文拼成一段Markdown
     def load_skills_for_context(self, skill_names: list[str]) -> str:
         """
         Load specific skills for inclusion in agent context.
@@ -97,7 +105,8 @@ class SkillsLoader:
                 parts.append(f"### Skill: {name}\n\n{content}")
         
         return "\n\n---\n\n".join(parts) if parts else ""
-    
+
+    # 给所有skill生成一份XML目录 只有名字, 描述, 路径, 是否可用
     def build_skills_summary(self) -> str:
         """
         Build a summary of all skills (name, description, path, availability).
@@ -150,14 +159,16 @@ class SkillsLoader:
             if not os.environ.get(env):
                 missing.append(f"ENV: {env}")
         return ", ".join(missing)
-    
+
+    # 取frontmatter里面的description, 没有就用skill名替代
     def _get_skill_description(self, name: str) -> str:
         """Get the description of a skill from its frontmatter."""
         meta = self.get_skill_metadata(name)
         if meta and meta.get("description"):
             return meta["description"]
         return name  # Fallback to skill name
-    
+
+    # 去掉开头的 --- ... --- 只留正文
     def _strip_frontmatter(self, content: str) -> str:
         """Remove YAML frontmatter from markdown content."""
         if content.startswith("---"):
@@ -165,15 +176,28 @@ class SkillsLoader:
             if match:
                 return content[match.end():].strip()
         return content
-    
+
+    """
+    ---
+    name: weather
+    description: Get current weather and forecasts (no API key required).
+    homepage: https://wttr.in/:help
+    metadata: {"nanobot":{"emoji":"🌤️","requires":{"bins":["curl"]}}}
+    ---
+    # 正文……
+    """
+
+    # 解析第二层:把metadata那段JSON字符串转换成dict, 只取"nanobot"部分
     def _parse_nanobot_metadata(self, raw: str) -> dict:
         """Parse nanobot metadata JSON from frontmatter."""
         try:
+            # 把json字符串转成Python对象。
             data = json.loads(raw)
             return data.get("nanobot", {}) if isinstance(data, dict) else {}
         except (json.JSONDecodeError, TypeError):
             return {}
-    
+
+    # 检查依赖
     def _check_requirements(self, skill_meta: dict) -> bool:
         """Check if skill requirements are met (bins, env vars)."""
         requires = skill_meta.get("requires", {})
@@ -189,7 +213,8 @@ class SkillsLoader:
         """Get nanobot metadata for a skill (cached in frontmatter)."""
         meta = self.get_skill_metadata(name) or {}
         return self._parse_nanobot_metadata(meta.get("metadata", ""))
-    
+
+    # 找出标了always且依赖满足的skill, 全文放进prompt
     def get_always_skills(self) -> list[str]:
         """Get skills marked as always=true that meet requirements."""
         result = []
@@ -199,7 +224,8 @@ class SkillsLoader:
             if skill_meta.get("always") or meta.get("always"):
                 result.append(s["name"])
         return result
-    
+
+    # 解析第一层: ---之间的key:value行
     def get_skill_metadata(self, name: str) -> dict | None:
         """
         Get metadata from a skill's frontmatter.
@@ -210,11 +236,13 @@ class SkillsLoader:
         Returns:
             Metadata dict or None.
         """
+        # 读出整个 SKILL.md文本
         content = self.load_skill(name)
         if not content:
             return None
         
         if content.startswith("---"):
+            # 取出两个 "---" 之间的内容
             match = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
             if match:
                 # Simple YAML parsing

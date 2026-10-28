@@ -178,7 +178,8 @@ def gateway(
         logging.basicConfig(level=logging.DEBUG)
     
     console.print(f"{__logo__} Starting nanobot gateway on port {port}...")
-    
+
+    # 读取 ~/.nanobot/config.json，得到一个 Config 对象。
     config = load_config()
     
     # Create components
